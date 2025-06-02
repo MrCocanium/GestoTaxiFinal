@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Factura de Servicios de Taxi</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f2f5;
+            color: #2c3e50;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            padding: 25px 40px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .logo {
+            max-width: 200px;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+            padding: 10px;
+        }
+
+        main {
+            padding: 30px 40px;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            margin-bottom: 30px;
+            color: #1e3c72;
+            text-align: center;
+            position: relative;
+            padding-bottom: 10px;
+        }
+
+        h1::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;
+            height: 3px;
+            background: linear-gradient(90deg, #1e3c72, #2a5298);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25px;
+            font-size: 1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+        }
+
+        tbody tr:hover {
+            background-color: #f8f9fa;
+            transition: background-color 0.3s ease;
+        }
+
+        tfoot td {
+            font-weight: bold;
+            background-color: #f8f9fa;
+        }
+
+        .right {
+            text-align: right;
+        }
+
+        tfoot tr:last-child td {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            font-size: 1.1rem;
+        }
+
+        @media (max-width: 768px) {
+            table, thead, tbody, th, td, tr {
+                display: block;
+            }
+
+            th {
+                text-align: right;
+            }
+
+            td::before {
+                content: attr(data-label);
+                float: left;
+                font-weight: bold;
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Encabezado -->
+    <header>
+        <img src="logo.png" alt="Logo Gestotaxi" class="logo" />
+    </header>
+
+    <!-- Contenido principal -->
+    <main>
+        <h1>Factura de Servicios</h1>
+
+        <table id="tabla-servicios">
+            <thead>
+                <tr>
+                    <th>Taxista</th>
+                    <th>Paciente</th>
+                    <th>Origen</th>
+                    <th>Destino</th>
+                    <th>Kilómetros</th>
+                    <th>Horas de Espera</th>
+                    <th>Subtotal (€)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Aquí se insertan las filas dinámicamente -->
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="6" class="right">Total:</td>
+                    <td id="total">0.00 €</td>
+                </tr>
+                <tr>
+                    <td colspan="6" class="right">Total con IVA (21%):</td>
+                    <td id="total-iva">0.00 €</td>
+                </tr>
+            </tfoot>
+        </table>
+    </main>
+
+    <!-- Librerías Locales -->
+    <script src="html2canvas.min.js"></script>
+    <script src="jspdf.umd.min.js"></script>
+
+    <script>
+        // Función para agregar un servicio a la factura
+        function agregarServicio(taxista, paciente, origen, destino, kilometros, horas) {
+            const precioPorKm = 0.49; // ejemplo: 1.2 €/km
+            const precioPorHoraEspera = 9; // ejemplo: 15 €/hora
+
+            const subtotal = (kilometros * precioPorKm) + (horas * precioPorHoraEspera);
+
+            const tabla = document.getElementById("tabla-servicios").getElementsByTagName("tbody")[0];
+            const fila = tabla.insertRow();
+
+            fila.insertCell().textContent = taxista;
+            fila.insertCell().textContent = paciente;
+            fila.insertCell().textContent = origen;
+            fila.insertCell().textContent = destino;
+            fila.insertCell().textContent = parseFloat(kilometros).toFixed(2);
+            fila.insertCell().textContent = parseFloat(horas).toFixed(2);
+            fila.insertCell().textContent = subtotal.toFixed(2) + " €";
+
+            actualizarTotales();
+        }
+
+        // Función para actualizar los totales
+        function actualizarTotales() {
+            let total = 0;
+            const filas = document.querySelectorAll("#tabla-servicios tbody tr");
+
+            filas.forEach(fila => {
+                const subtotalTexto = fila.cells[6].textContent.replace(" €", "");
+                total += parseFloat(subtotalTexto);
+            });
+
+            const totalConIva = total * 1.21;
+
+            document.getElementById("total").textContent = total.toFixed(2) + " €";
+            document.getElementById("total-iva").textContent = totalConIva.toFixed(2) + " €";
+        }
+
+        // Limpiar todos los servicios
+        function limpiarServicios() {
+            const tbody = document.querySelector("#tabla-servicios tbody");
+            tbody.innerHTML = "";
+            actualizarTotales();
+        }
+
+        // Generar PDF
+        function generarPDF() {
+            const element = document.body;
+
+            html2canvas(element).then(canvas => {
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jspdf.jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: [210, 297] // A4
+                });
+
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                pdf.save("FacturaServicios.pdf");
+            });
+        }
+
+        // Ejecutar actualización de totales al cargar la página
+        window.onload = function() {
+            actualizarTotales();
+        };
+    </script>
+
+</body>
+</html>

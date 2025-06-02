@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Seleccionar Lugar</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #search-container {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      width: 300px;
+      background: white;
+      padding: 10px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+
+    #search-input {
+      width: calc(100% - 16px);
+      padding: 8px;
+      font-size: 14px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    #suggestions {
+      width: 100%;
+      background: white;
+      border: 1px solid #ccc;
+      max-height: 200px;
+      overflow-y: auto;
+      display: none;
+      border-radius: 4px;
+      margin-top: 5px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+
+    .suggestion-item {
+      padding: 8px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+    }
+
+    .suggestion-item:hover {
+      background-color: #f0f0f0;
+    }
+
+    .suggestion-item:last-child {
+      border-bottom: none;
+    }
+
+    #locationModal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 300px;
+      background: white;
+      border-radius: 6px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+      z-index: 1000;
+      display: none;
+      padding: 20px;
+      font-family: sans-serif;
+    }
+
+    #locationModal h4 {
+      margin-top: 0;
+    }
+
+    #locationModal input {
+      width: 100%;
+      padding: 8px;
+      margin: 10px 0 15px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    #locationModal button {
+      padding: 8px 12px;
+      margin-right: 10px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+    }
+
+    #locationModal button:first-child {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    #locationModal button:last-child {
+      background-color: #f44336;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+
+<div id="search-container">
+  <input type="text" id="search-input" placeholder="Buscar ubicación..." autocomplete="off" />
+  <div id="suggestions"></div>
+</div>
+
+<div id="map"></div>
+
+<div id="locationModal">
+  <h4>Nombre del lugar:</h4>
+  <input type="text" id="placeNameInput" />
+  <br/>
+  <button onclick="acceptPlace()">Aceptar</button>
+  <button onclick="cancelPlace()">Cancelar</button>
+</div>
+
+<script>
+  // Inicializar mapa sin controles de zoom
+  let map = L.map('map', {
+    zoomControl: false  // Deshabilitar controles de zoom predeterminados
+  }).setView([40.416775, -3.703790], 6);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Variables globales
+  let currentMarker = null;
+  let currentLat = null;
+  let currentLng = null;
+  let defaultName = "";
+
+  // Función para geocodificación inversa (obtener nombre de coordenadas)
+  async function reverseGeocode(lat, lng) {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+    try {
+      const response = await fetch(url, { 
+        headers: { 
+          'Accept-Language': 'es',
+          'Referer': window.location.href
+        } 
+      });
+      const data = await response.json();
+      return data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    } catch (error) {
+      console.error("Error al geocodificar:", error);
+      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+  }
+
+  // Mostrar el modal para confirmar el nombre del lugar
+  async function showNamePrompt(lat, lng) {
+    currentLat = lat;
+    currentLng = lng;
+    document.getElementById("placeNameInput").value = ""; // Empty input field by default
+    document.getElementById("locationModal").style.display = "block";
+  }
+
+  // Aceptar el lugar seleccionado
+  function acceptPlace() {
+    const name = document.getElementById("placeNameInput").value.trim();
+    if (!name) {
+      alert("Por favor, introduce un nombre para el lugar.");
+      return;
+    }
+
+    document.getElementById("locationModal").style.display = "none";
+
+    // Enviar los datos a la aplicación (si es necesario)
+    if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.postMessage(JSON.stringify({
+        tipo: "lugar_seleccionado",
+        nombre: name,
+        lat: currentLat,
+        lng: currentLng
+      }));
+    }
+
+    // Mostrar marcador en el mapa
+    updateMarker(currentLat, currentLng, name);
+  }
+
+  // Cancelar la selección
+  function cancelPlace() {
+    document.getElementById("locationModal").style.display = "none";
+    if (currentMarker) {
+      map.removeLayer(currentMarker);
+      currentMarker = null;
+    }
+  }
+
+  // Actualizar o crear marcador
+  function updateMarker(lat, lng, name) {
+    if (currentMarker) {
+      map.removeLayer(currentMarker);
+    }
+    
+    currentMarker = L.marker([lat, lng]).addTo(map)
+      .bindPopup(`<b>${name}</b><br>Lat: ${lat.toFixed(6)}<br>Lng: ${lng.toFixed(6)}`)
+      .openPopup();
+    
+    map.setView([lat, lng], 15);
+  }
+
+  // Función debounce para limitar las peticiones mientras se escribe
+  function debounce(func, wait) {
+    let timeout;
+    return function() {
+      const context = this, args = arguments;
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        func.apply(context, args);
+      }, wait);
+    };
+  }
+
+  // Configurar el buscador con sugerencias
+  const searchInput = document.getElementById("search-input");
+  const suggestionsBox = document.getElementById("suggestions");
+
+  searchInput.addEventListener("input", debounce(async function() {
+    const query = this.value.trim();
+    if (!query || query.length < 3) {
+      suggestionsBox.innerHTML = "";
+      suggestionsBox.style.display = "none";
+      return;
+    }
+
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&addressdetails=1&limit=5&countrycodes=es&accept-language=es`;
+      const res = await fetch(url, {
+        headers: {
+          'Referer': window.location.href
+        }
+      });
+      const data = await res.json();
+
+      suggestionsBox.innerHTML = "";
+      if (data.length === 0) {
+        suggestionsBox.style.display = "none";
+        return;
+      }
+
+      data.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "suggestion-item";
+        div.textContent = item.display_name;
+        div.onclick = () => {
+          const lat = parseFloat(item.lat);
+          const lng = parseFloat(item.lon);
+          updateMarker(lat, lng, item.display_name);
+          searchInput.value = item.display_name;
+          suggestionsBox.style.display = "none";
+          showNamePrompt(lat, lng);
+        };
+        suggestionsBox.appendChild(div);
+      });
+
+      suggestionsBox.style.display = "block";
+    } catch (err) {
+      console.error("Error al buscar:", err);
+      suggestionsBox.style.display = "none";
+    }
+  }, 300));
+
+  // Clic en el mapa para seleccionar un lugar
+  map.on("click", function(e) {
+    showNamePrompt(e.latlng.lat, e.latlng.lng);
+    updateMarker(e.latlng.lat, e.latlng.lng, "Nueva ubicación");
+  });
+
+  // Cerrar sugerencias al hacer clic fuera
+  document.addEventListener("click", function(e) {
+    if (e.target !== searchInput) {
+      suggestionsBox.style.display = "none";
+    }
+  });
+
+  // Notificar cuando el mapa esté listo
+  if (window.chrome && window.chrome.webview) {
+    window.chrome.webview.postMessage(JSON.stringify({ tipo: "mapa_listo" }));
+  }
+
+  // Función para recibir un lugar desde C# y mostrarlo en el mapa
+  function mostrarLugarDesdeApp(nombre, lat, lng) {
+    // Asegurar que sean números válidos
+    const latitud = parseFloat(lat);
+    const longitud = parseFloat(lng);
+
+    if (isNaN(latitud) || isNaN(longitud)) {
+        console.error("❌ Coordenadas inválidas:", { lat, lng });
+        return;
+    }
+
+    updateMarker(latitud, longitud, nombre);
+}
+</script>
+</html>

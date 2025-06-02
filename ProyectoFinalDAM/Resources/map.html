@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mapa con Rutas</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <style>
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    .toggle-instructions {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1001;
+      padding: 8px;
+      background-color: white;
+      border: 2px solid rgba(0,0,0,0.2);
+      border-radius: 4px;
+      cursor: pointer;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .leaflet-routing-container {
+      display: none;
+    }
+
+    .show-instructions .leaflet-routing-container {
+      display: block;
+    }
+
+  </style>
+</head>
+<body>
+
+  <div id="map"></div>
+  <button class="toggle-instructions"><i class="fas fa-list"></i></button>
+
+  <script>
+    let map = L.map('map').setView([40.416775, -3.703790], 6);
+    let control;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    function drawRoute(lat1, lng1, lat2, lng2) {
+      if (isNaN(lat1) || isNaN(lng1) || isNaN(lat2) || isNaN(lng2)) {
+        console.error("Coordenadas inválidas");
+        window.chrome.webview.postMessage({
+          tipo: "error",
+          mensaje: "Coordenadas inválidas"
+        });
+        return;
+      }
+
+      if (control) {
+        map.removeControl(control);
+      }
+
+      control = L.Routing.control({
+        waypoints: [
+          L.latLng(lat1, lng1),
+          L.latLng(lat2, lng2)
+        ],
+        routeWhileDragging: false,
+        createMarker: function(i, wp) {
+          return L.marker(wp.latLng, {
+            icon: L.icon({
+              iconUrl: i === 0 ? 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png' : 'https://maps.google.com/mapfiles/ms/icons/green-dot.png',
+              iconSize: [32, 32],
+              iconAnchor: [16, 32]
+            })
+          });
+        },
+        language: 'es',
+        showAlternatives: false,
+        lineOptions: {
+          addWaypoints: false
+        },
+        router: L.Routing.osrmv1({
+          serviceUrl: 'https://router.project-osrm.org/route/v1'
+        }),
+        formatter: new L.Routing.Formatter({
+          language: 'es'
+        })
+      }).on('routesfound', function(e) {
+        const route = e.routes[0];
+        const durationSeconds = route.summary.totalTime;
+        const durationMinutes = Math.round(durationSeconds / 60);
+
+        // Hacer zoom a la ruta completa
+        const bounds = L.latLngBounds(route.coordinates);
+        map.fitBounds(bounds, { padding: [50, 50] });
+
+        // Enviar info a WebView
+        if (window.chrome?.webview?.postMessage) {
+          window.chrome.webview.postMessage({
+            tipo: 'ruta_calculada',
+            distancia: route.summary.totalDistance.toFixed(2),
+            minutos: durationMinutes
+          });
+        }
+      }).addTo(map);
+
+      // Botón de toggle para instrucciones
+      const toggleButton = document.querySelector('.toggle-instructions');
+      toggleButton.addEventListener('click', function () {
+        const mapElement = document.getElementById('map');
+        const icon = toggleButton.querySelector('i');
+        if (mapElement.classList.contains('show-instructions')) {
+          mapElement.classList.remove('show-instructions');
+          icon.classList.remove('fa-times');
+          icon.classList.add('fa-list');
+        } else {
+          mapElement.classList.add('show-instructions');
+          icon.classList.remove('fa-list');
+          icon.classList.add('fa-times');
+        }
+      });
+    }
+
+    // Avisar que el mapa está listo
+    window.chrome.webview.postMessage({ tipo: "mapa_listo" });
+  </script>
+</body>
+</html>
